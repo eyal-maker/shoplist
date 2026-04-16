@@ -516,7 +516,7 @@ function SearchPanel(props: {
         </>
       )}
 
-      {!loading && stage !== 'building' && stores.length === 0 && !locError && !storesError && (
+      {!loading && stores.length === 0 && !locError && !storesError && (
         <div className="muted" style={{ marginTop: 12 }}>
           לחצו «חפש (Go Search)» כדי לאתר את 10 הסופרים הקרובים ביותר.
         </div>
