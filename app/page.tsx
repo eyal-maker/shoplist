@@ -1,9 +1,31 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { CATALOG, CATALOG_BY_ID, CatalogItem } from '@/lib/catalog';
 import { CHAINS, CHAIN_LIST, ChainKey } from '@/lib/chains';
 import type { Quote } from '@/lib/prices';
+
+const StoresMap = dynamic(() => import('@/components/StoresMap'), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        height: 360,
+        borderRadius: 10,
+        background: '#f3f4f6',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#6b7280',
+      }}
+    >
+      טוען מפה…
+    </div>
+  ),
+});
+
+const LS_ENTRIES_KEY = 'shoplist.entries.v1';
 
 type ListEntry = { itemId: string; qty: number };
 
@@ -39,7 +61,39 @@ export default function Page() {
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState<string | null>(null);
 
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [hydrated, setHydrated] = useState(false);
+
   const totalItems = entries.reduce((s, e) => s + e.qty, 0);
+
+  // Load persisted list on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_ENTRIES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ListEntry[];
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(
+            e => typeof e?.itemId === 'string' && typeof e?.qty === 'number' && e.qty > 0,
+          );
+          setEntries(cleaned);
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+    setHydrated(true);
+  }, []);
+
+  // Persist on change (after hydration so we don't overwrite with initial []).
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(LS_ENTRIES_KEY, JSON.stringify(entries));
+    } catch {
+      // ignore quota errors
+    }
+  }, [entries, hydrated]);
 
   function addFromCatalog() {
     if (!pickId || pickQty <= 0) return;
@@ -228,6 +282,8 @@ export default function Page() {
         locError={locError}
         storesError={storesError}
         selectedStoreIds={selectedStoreIds}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         onGoSearch={goSearch}
         onToggleStore={toggleStore}
         onSelectAll={selectAllStores}
@@ -264,8 +320,8 @@ export default function Page() {
       )}
 
       <div className="footer-note">
-        המחירים המוצגים כעת דמה (mock) — השלב הבא יחבר לנתוני «חוק מחירים שקופים» של
-        הרשתות.
+        מקור מחירים: mock כברירת מחדל. להפעלת נתוני שופרסל האמיתיים מ״חוק מחירים
+        שקופים״ — הריצו עם <code>ENABLE_REAL_PRICES=1 npm run dev</code>.
       </div>
     </div>
   );
@@ -425,6 +481,8 @@ function SearchPanel(props: {
   locError: string | null;
   storesError: string | null;
   selectedStoreIds: Set<string>;
+  viewMode: 'list' | 'map';
+  onViewModeChange: (v: 'list' | 'map') => void;
   onGoSearch: () => void;
   onToggleStore: (id: string) => void;
   onSelectAll: () => void;
@@ -438,6 +496,8 @@ function SearchPanel(props: {
     locError,
     storesError,
     selectedStoreIds,
+    viewMode,
+    onViewModeChange,
     onGoSearch,
     onToggleStore,
     onSelectAll,
@@ -469,7 +529,7 @@ function SearchPanel(props: {
 
       {stores.length > 0 && (
         <>
-          <div className="row" style={{ margin: '12px 0' }}>
+          <div className="row" style={{ margin: '12px 0', flexWrap: 'wrap' }}>
             <button className="btn" onClick={onSelectAll}>
               בחר הכול
             </button>
@@ -477,7 +537,31 @@ function SearchPanel(props: {
               נקה בחירה
             </button>
             <span className="muted">נבחרו: {selectedStoreIds.size}</span>
+            <span style={{ flex: 1 }} />
+            <button
+              className={'btn' + (viewMode === 'list' ? ' primary' : '')}
+              onClick={() => onViewModeChange('list')}
+            >
+              רשימה
+            </button>
+            <button
+              className={'btn' + (viewMode === 'map' ? ' primary' : '')}
+              onClick={() => onViewModeChange('map')}
+            >
+              מפה
+            </button>
           </div>
+          {viewMode === 'map' && coords && (
+            <div style={{ marginBottom: 12 }}>
+              <StoresMap
+                stores={stores}
+                center={coords}
+                selected={selectedStoreIds}
+                onToggle={onToggleStore}
+              />
+            </div>
+          )}
+          {viewMode === 'list' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
             {stores.map(s => {
               const info = CHAINS[s.chain];
@@ -513,6 +597,7 @@ function SearchPanel(props: {
               );
             })}
           </div>
+          )}
         </>
       )}
 
@@ -559,6 +644,16 @@ function ComparePanel(props: {
                       style={{ background: info.color, marginInlineEnd: 6 }}
                     >
                       {info.he}
+                    </span>
+                    <span
+                      className="chip"
+                      style={{
+                        background: q.source === 'live' ? '#16a34a' : '#6b7280',
+                        marginInlineEnd: 6,
+                      }}
+                      title={q.source === 'live' ? 'נתונים חיים מתוך חוק מחירים שקופים' : 'נתוני דמה'}
+                    >
+                      {q.source === 'live' ? 'חי' : 'דמה'}
                     </span>
                     <div className="muted" style={{ fontWeight: 400 }}>
                       {s?.name}

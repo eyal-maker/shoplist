@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { priceProvider, ShoppingListEntry } from '@/lib/prices';
+import { getPriceProvider, ShoppingListEntry } from '@/lib/prices';
 import { ChainKey } from '@/lib/chains';
 
 export const runtime = 'nodejs';
@@ -21,8 +21,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'entries and stores required' }, { status: 400 });
   }
 
+  const provider = getPriceProvider();
   const quotes = await Promise.all(
-    body.stores.map(s => priceProvider.quote(s.chain, s.id, body.entries)),
+    body.stores.map(s => provider.quote(s.chain, s.id, body.entries)),
   );
   return NextResponse.json({ quotes });
 }
